@@ -7,6 +7,8 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
 
 # Set your OpenAI API Key securely in Streamlit's secrets management, NOT hardcoded.
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
@@ -23,9 +25,26 @@ def initialize_rag(pdf_path):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     splits = text_splitter.split_documents(docs)
 
-    vectorstore = FAISS.from_documents(documents=splits, embedding=OpenAIEmbeddings())
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4}) 
+    # 1. Split text into chunks
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splits = text_splitter.split_documents(docs)
 
+    # 2. Setup Sparse Retriever (Keyword Search)
+    bm25_retriever = BM25Retriever.from_documents(splits)
+    bm25_retriever.k = 4  # Retrieve top 4 exact keyword matches
+
+    # 3. Setup Dense Retriever (Semantic Vector Search)
+    vectorstore = FAISS.from_documents(documents=splits, embedding=OpenAIEmbeddings())
+    faiss_retriever = vectorstore.as_retriever(search_kwargs={"k": 4}) # Retrieve top 4 semantic matches
+
+    # 4. Combine them into a Hybrid Ensemble Retriever
+    # The weights parameter balances the importance of keyword vs. semantic search (0.5 each is standard)
+    ensemble_retriever = EnsembleRetriever(
+        retrievers=[bm25_retriever, faiss_retriever],
+        weights=[0.5, 0.5] 
+    )
+
+    # ... (Your system_prompt and LLM definition remain exactly the same) ...
     system_prompt = """You are an expert medical assistant. Your sole purpose is to answer the user's questions based STRICTLY and ONLY on the provided context.
 
     Rules you must follow:
@@ -45,13 +64,16 @@ def initialize_rag(pdf_path):
 
     def format_docs(retrieved_docs):
         return "\n\n".join(doc.page_content for doc in retrieved_docs)
-
+    
+    # 5. Update the RAG chain to use the ensemble_retriever instead of the basic retriever
     rag_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        {"context": ensemble_retriever | format_docs, "question": RunnablePassthrough()}
         | prompt
         | llm
         | StrOutputParser()
     )
+
+
     return rag_chain
 
 # --- Streamlit UI ---

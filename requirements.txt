@@ -5,3 +5,4 @@ langchain-openai
 langchain-text-splitters
 pypdf
 faiss-cpu
+rank_bm25
