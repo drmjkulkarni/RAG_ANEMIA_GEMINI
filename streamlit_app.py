@@ -35,7 +35,7 @@ def initialize_rag(pdf_path):
 
     # 3. Setup Dense Retriever (Semantic Vector Search)
     vectorstore = FAISS.from_documents(documents=splits, embedding=OpenAIEmbeddings())
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 10}) 
+    faiss_retriever = vectorstore.as_retriever(search_kwargs={"k": 10}) 
 
     # 4. Combine them into a Hybrid Ensemble Retriever
     # The weights parameter balances the importance of keyword vs. semantic search (0.5 each is standard)
